@@ -36,6 +36,36 @@ This project monitors battery parameters such as cell voltage and fault conditio
 
 ---
 
+
+
+---
+
+## ⚙️ Functional Features
+
+### Embedded Firmware (STM32)
+- Cell voltage monitoring using BQ76907
+- Fault detection (over-voltage / under-voltage)
+- I2C communication with battery monitor IC
+- USB CDC data transmission to PC
+- Reception of control commands from PC software
+
+### PC Software (Excel VBA)
+- Real-time display of individual cell voltages
+- Graph-based battery analysis
+- Data logging for offline analysis
+- User-controlled or algorithm-based cell balancing
+- Communication with STM32 via Virtual COM Port
+
+---
+
+## 🔌 USB CDC Communication
+
+The STM32 enumerates as a **Virtual COM Port** on the PC.
+
+### Data Flow 
+  BQ76907 → STM32 → USB CDC → Excel VBA
+  Excel VBA → USB CDC → STM32 → BQ76907 (balancing control)
+
 ## 📁 Project Structure
 STM32-BMS-BQ76907/
 │
