@@ -32,6 +32,7 @@ This project monitors battery parameters such as cell voltage and fault conditio
 - **HAL Drivers:** STM32 HAL Library
 - **USB Stack:** STM32 USB Device Library (CDC Class)
 - **Version Control:** Git & GitHub
+- **VBA Editor:** visualize custrom software
 
 ---
 
@@ -61,6 +62,9 @@ STM32-BMS-BQ76907/
 │
 ├── Middlewares/
 │ └── STM32_USB_Device_Library/
+│
+├── PC_Software/
+│ └── Excel_VBA_BMS_Tool.xlsm
 │
 ├── README.md
 └── .gitignore
