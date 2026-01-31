@@ -1,0 +1,302 @@
+
+
+Dim StopBMS As Boolean
+
+
+Private Sub checkLog_Click()
+
+End Sub
+
+Private Sub btnSetCUV_Click()
+  ' 1. Set the Threshold to 3000mV (3.0V)
+    ' Per manual: Programmable in 1mV steps. Register: 0x9026
+    Call WriteToBMS(&H9026, 3000, 2)
+
+    ' 2. Set the Delay (How many measurements to wait before fault)
+    ' Per manual: 1 to 255 ADSCANs. Register: 0x9028
+    ' We will set it to 10 (approx. 230ms delay) to prevent accidental trips
+    Call WriteToBMS(&H9028, 10, 1)
+
+    ' 3. Enable the Protection Bit [CUV]
+    ' Per manual: Bit 0 of register 0x9024 (Enabled Protections A)
+    Dim currentProtA As Byte
+    currentProtA = ReadFromBMS(&H9024)
+    ' Use 'Or 1' to flip Bit 0 to high (Enabled)
+    Call WriteToBMS(&H9024, (currentProtA Or 1), 1)
+
+    MsgBox "Hardware Protection Active: 3.0V Limit Set!", vbInformation
+End Sub
+
+Private Sub buttonClose_Click()
+ Unload Me
+End Sub
+Private Sub buttonConnect_Click()
+ Dim PORTID As Long
+    PORTID = 8
+    
+    ' CHANGE THIS LINE: The library usually uses STOP_COM_PORT
+    Call STOP_COM_PORT(PORTID)
+    
+    ' NOW TRY TO CONNECT
+    If START_COM_PORT(PORTID, "BAUD=115200 DATA=8 PARITY=N STOP=1") Then
+        Me.lblStatus.Caption = "STATUS: CONNECTED"
+        Me.lblStatus.ForeColor = vbGreen
+    Else
+        Me.lblStatus.Caption = "STATUS: DEVICE NOT FOUND"
+        Me.lblStatus.ForeColor = vbRed
+        MsgBox "FAILED TO CONNECT. ENSURE NO OTHER PROGRAM (LIKE ARDUINO IDE) IS OPEN.", vbCritical
+    End If
+End Sub
+
+
+Private Sub buttonRefresh_Click()
+    Dim RAW_DATA As String
+    Dim dataLines As Variant
+    Dim i As Integer
+    Dim cellVal As Double
+    Dim anyFault As Boolean
+    Dim lineText As String
+    Dim startPos As Integer
+    Dim numericPart As String
+
+
+
+
+
+
+    ' 1. GET DATA FROM HARDWARE
+    RAW_DATA = RECEIVE_COM_PORT(8)
+    
+    If RAW_DATA <> "" Then
+        ' Update Display Box vertically
+       Me.txtDisplay.Value = Replace(RAW_DATA, vbLf, vbCrLf)
+        
+        dataLines = Split(RAW_DATA, vbLf)
+        
+        ' 2. PARSE DATA (Skip the "Cell 1" text)
+        For i = 0 To UBound(dataLines)
+            lineText = Trim(dataLines(i))
+            
+            ' Find the "=" or ":" to skip the "Cell X" part
+            startPos = InStr(lineText, "=")
+            If startPos = 0 Then startPos = InStr(lineText, ":")
+            
+            If startPos > 0 Then
+                ' Take only what is AFTER the "="
+                numericPart = Mid(lineText, startPos + 1)
+                ' Clean only the number (e.g., "3.56")
+                numericPart = CleanNumericOnly(numericPart)
+                
+                If i <= 6 Then
+                    Me.Controls("txtValue" & (i + 1)).text = numericPart
+                End If
+            End If
+        Next i
+    End If
+' 3. CHECK FOR RANGE FAULTS (Target: Cell 1 Only)
+    anyFault = False
+    
+    ' Get the value for Cell 1 (for cell 1-6)
+    cellVal = Val(Me.txtValue1.text)
+    
+    
+    
+    If cellVal > 0 Then ' Only check if data is present
+        ' Apply 3V - 4V limit ONLY to Cell 1
+        If cellVal < 3# Or cellVal > 4# Then
+            Me.txtValue1.BackColor = vbRed
+            anyFault = True
+        Else
+            Me.txtValue1.BackColor = vbGreen
+        End If
+    End If
+
+    ' Ensure other cells (2-6) stay white/normal
+    For i = 2 To 6
+        Me.Controls("txtValue" & i).BackColor = vbWhite
+    Next i
+
+    ' 4. UPDATE STATUS LABEL
+    If anyFault Then
+        Me.lblStatus.Caption = "ALERT: CELL 1 OUT OF RANGE (3V-4V)"
+        Me.lblStatus.BackColor = vbRed
+    Else
+        Me.lblStatus.Caption = "STATUS: HEALTHY"
+        Me.lblStatus.BackColor = vbGreen
+    End If
+    
+End Sub
+
+
+
+
+' Add this helper function at the very bottom of your code
+Private Function CleanNumericOnly(ByVal text As String) As String
+    Dim i As Integer
+    Dim char As String
+    Dim result As String
+    
+    For i = 1 To Len(text)
+        char = Mid(text, i, 1)
+        ' Keep only 0-9 and the decimal point
+        If char Like "[0-9]" Or char = "." Then
+            result = result & char
+        End If
+    Next i
+    CleanNumericOnly = Trim(result)
+    
+    
+End Function
+
+Private Sub buttonStart_Click()
+ StopBMS = False
+    Me.lblStatus.Caption = "STATUS: MONITORING LIVE"
+    Me.lblStatus.ForeColor = vbGreen
+    
+    Me.buttonStart.Enabled = False
+
+    Do While StopBMS = False
+        Call buttonRefresh_Click
+        DoEvents ' CRITICAL: Allows VBA to register your Stop button click
+        Application.Wait (Now + TimeValue("0:00:01"))
+    Loop
+    
+    Me.buttonStart.Enabled = True
+    Me.lblStatus.Caption = "STATUS: MONITORING STOPPED"
+End Sub
+
+Private Sub buttonStop_Click()
+ StopBMS = True
+    Call STOP_COM_PORT(8)
+    Me.lblStatus.Caption = "STATUS: DISCONNECTED"
+    Me.lblStatus.ForeColor = vbRed
+End Sub
+
+Private Sub lblFaultStatus_Click()
+  Sub UpdateBMSData()
+    ' ... your existing code to read Cell Voltages ...
+
+    ' ADD THE FAULT CHECK HERE:
+    Dim safetyStatus As Byte
+    safetyStatus = ReadFromBMS(&H3)
+
+    If (safetyStatus And &H1) <> 0 Then
+        lblFaultStatus.Caption = "FAULT: CELL UNDERVOLTAGE!"
+        lblFaultStatus.BackColor = vbRed
+    Else
+        lblFaultStatus.Caption = "System Healthy"
+        lblFaultStatus.BackColor = vbGreen
+    End If
+End Sub
+
+
+
+
+
+
+
+Private Sub txtName1_Change()
+
+End Sub
+
+Private Sub txtName2_Change()
+
+End Sub
+
+Private Sub txtName4_Change()
+
+End Sub
+
+Private Sub txtUnits3_Change()
+
+End Sub
+
+Private Sub txtUnits4_Change()
+
+End Sub
+
+Private Sub txtUnits5_Change()
+
+End Sub
+
+Private Sub txtValue1_Change()
+
+End Sub
+
+Private Sub txtValue2_Change()
+
+End Sub
+
+Private Sub txtValue3_Change()
+
+End Sub
+
+Private Sub txtValue4_Change()
+
+End Sub
+
+Private Sub txtValue5_Change()
+
+End Sub
+
+Private Sub txtValue6_Change()
+
+End Sub
+
+Private Sub txtValue7_Change()
+
+End Sub
+
+Private Sub UserForm_Click()
+
+End Sub
+
+Private Sub UserForm_Initialize()
+  Dim i As Integer
+
+    ' --- Voltage cells 1–6 ---
+    For i = 1 To 6
+        On Error Resume Next
+        Me.Controls("txtValue" & i).text = " "
+        Me.Controls("txtUnits" & i).text = "  V"
+        Me.Controls("txtName" & i).text = "Cell " & i & " Voltage"
+        Me.Controls("checkLog" & i).Value = True
+        Me.Controls("checkScan" & i).Value = True
+    Next i
+    
+    ' --- Stack Voltage row (7) ---
+    On Error Resume Next
+     Me.Controls("txtName7").text = "Stack Voltage"
+     Me.Controls("txtValue7").text = " "
+     Me.Controls("txtUnits7").text = "   V"
+     Me.Controls("checkLog7").Value = True
+     Me.Controls("checkScan7").Value = True
+    
+     ' --- Temperature row (8) ---
+    On Error Resume Next
+    Me.Controls("txtName8").text = "Temperature"
+    Me.Controls("txtValue8").text = " "
+    Me.Controls("txtUnits8").text = "  °C"
+    Me.Controls("checkLog8").Value = True
+    Me.Controls("checkScan8").Value = True
+    
+    
+    
+    
+End Sub
+
+' Dummy Functions (Keep these for now if you need them for testing)
+Private Function GetCellVoltage(cellNo As Integer) As Double
+    GetCellVoltage = " "
+End Function
+
+Private Function GetStackVoltage() As Double
+    GetStackVoltage = " "
+End Function
+
+Private Function GetTemperature() As Double
+    GetTemperature = " "
+End Function
+
+
+
